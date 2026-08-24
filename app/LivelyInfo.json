@@ -1,0 +1,14 @@
+{
+  "AppVersion": "2.0.0.0",
+  "Title": "Project Atlas",
+  "Thumbnail": "",
+  "Preview": "",
+  "Desc": "Living map wallpapers — US, New Mexico, Albuquerque, Nepal, Kathmandu. Use span mode across all monitors.",
+  "Author": "rama",
+  "License": "Personal use; map data © OpenStreetMap contributors (ODbL).",
+  "Contact": "",
+  "Type": "web",
+  "FileName": "index.html",
+  "Arguments": "",
+  "IsAbsolutePath": false
+}

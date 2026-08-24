@@ -1,0 +1,4 @@
+{
+  "mode": { "type": "dropdown", "text": "Mode", "value": 0, "items": ["auto", "active", "idle"] },
+  "idleMinutes": { "type": "slider", "text": "Idle threshold (minutes)", "value": 5, "min": 1, "max": 60, "step": 1 }
+}

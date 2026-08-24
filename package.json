@@ -1,0 +1,19 @@
+{
+  "name": "project-atlas",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Living map wallpapers: five vector map posters, three monitors, one page.",
+  "scripts": {
+    "export": "node tools/export/export-map.mjs",
+    "export:all": "node tools/export/export-map.mjs --all",
+    "serve": "node tools/serve.mjs",
+    "detect": "powershell -ExecutionPolicy Bypass -File tools/detect-monitors.ps1",
+    "lively": "node tools/build-lively.mjs --set",
+    "build": "node tools/build-lively.mjs"
+  },
+  "dependencies": {
+    "@mapbox/vector-tile": "^2.0.3",
+    "pbf": "^4.0.1"
+  }
+}

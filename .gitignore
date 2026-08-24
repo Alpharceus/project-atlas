@@ -1,0 +1,10 @@
+node_modules/
+.cache/
+# generated artifacts
+maps/*.js
+maps/*.svg
+config/monitors.local.js
+# vendored reference clone (pin: see README; AGPL — not redistributed here)
+tools/terraink/
+# local planning notes (kept out of the public repo)
+project-atlas-plan.md
