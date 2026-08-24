@@ -8,3 +8,6 @@ config/monitors.local.js
 tools/terraink/
 # local planning notes (kept out of the public repo)
 project-atlas-plan.md
+# work handoff (transferred offline, never committed)
+CLAUDE.work.md
+CLAUDE.md
