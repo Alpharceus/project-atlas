@@ -9,7 +9,7 @@
   const POLL_MS = 10 * 60 * 1000;
   const API = "https://api.open-meteo.com/v1/forecast";
   const qs = new URLSearchParams(location.search);
-  const forced = qs.get("wx");
+  let forced = qs.get("wx");
 
   // WMO weather interpretation codes -> coarse visual state + intensity 0..1.
   function classify(code) {
@@ -64,7 +64,7 @@
     async pollAll() {
       for (const c of this.panels) {
         try {
-          if (forced) { this.apply(c, { state: forced, intensity: 0.85 }, 21, true); continue; }
+          if (forced) { this.apply(c, { state: forced, intensity: 0.85 }, c.temp == null ? 21 : c.temp, true); continue; }
           const url = API + "?latitude=" + c.lat + "&longitude=" + c.lon +
             "&current=temperature_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day&timezone=auto";
           const res = await fetch(url);
@@ -87,6 +87,12 @@
       c.el.style.setProperty("--wx", wx.intensity.toFixed(2));
       c.readout.textContent = t + "° · " + wx.state;
       document.dispatchEvent(new CustomEvent("atlas:weather", { detail: { map: c.mapId, state: wx.state, temp: t, isDay } }));
+    },
+
+    setForce(state) { // Lively "Weather" dropdown; null returns to live data
+      forced = state;
+      for (const c of this.panels) { c.state = null; }
+      this.pollAll();
     },
 
     onMode() { /* overlays live on the panel, not the slot — nothing to do */ },

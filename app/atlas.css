@@ -1,7 +1,7 @@
 html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
 #atlas { position: relative; transform-origin: 0 0; background: var(--atlas-gap, #000); }
 
-.panel { position: absolute; overflow: hidden; }
+.panel { position: absolute; overflow: hidden; contain: strict; }
 .slot { position: absolute; inset: 0; transition: opacity 3s ease-in-out; }
 .slot svg { display: block; width: 100%; height: 100%; }
 .slot.hidden { opacity: 0; }
@@ -11,83 +11,91 @@ html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
 }
 
 /* Day/night ("city lights"): atlas.js lerps the gold CSS vars with solar elevation and
-   toggles .night on each svg. Night = pure black land, rich gold, road glow, full pulses;
-   day = slightly lifted land, pale champagne gold, no glow, fainter pulses. */
-.slot svg.night #layer-road-major { filter: drop-shadow(0 0 3px rgba(226, 178, 63, .55)); }
+   toggles .night on each svg. Glow is a static widened clone of the major roads
+   (.glowline, built in atlas.js) — no drop-shadow filter, zero per-frame cost. */
+.glowline path {
+  fill: none; stroke: var(--road-major); stroke-width: 10; stroke-opacity: 0;
+  stroke-linecap: round; stroke-linejoin: round; transition: stroke-opacity 30s linear;
+}
+svg.night .glowline path { stroke-opacity: .15; }
 .slot svg.night .pulse path { stroke-opacity: 1; }
 .slot svg:not(.night) .pulse path { stroke-opacity: .5; }
 
 /* Legacy tint element (unused by day/night now; kept as an anchor for overlay stacking). */
 .tint { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
 
-/* --- Ambient animation. Every period divides ATLAS_CONFIG.loopSeconds (60s). --- */
+/* --- Ambient animation. Every period divides ATLAS_CONFIG.loopSeconds (60s).
+   Pulses are paint-bound (stroke-dashoffset), so they run at 15fps via steps() —
+   plenty for slow dashes, ~4x fewer repaints of the span-sized surface. --- */
 .pulse path {
   stroke: #fff; stroke-opacity: .85; fill: none;
   stroke-linecap: round; stroke-linejoin: round;
   stroke-dasharray: var(--dash, 12) var(--gap, 148);
   stroke-dashoffset: var(--len, 160);
-  animation: atlas-pulse var(--pulse-period, 6s) linear infinite;
+  animation: atlas-pulse var(--pulse-period, 6s) var(--pulse-steps, steps(90)) infinite;
 }
-.pulse.major path { --dash: 16; --gap: 224; --len: 240; --pulse-period: 6s; }
-.pulse.high  path { --dash: 8;  --gap: 112; --len: 120; --pulse-period: 4s; }
+.pulse.major path { --dash: 16; --gap: 224; --len: 240; --pulse-period: 6s; --pulse-steps: steps(90); }
+.pulse.high  path { --dash: 8;  --gap: 112; --len: 120; --pulse-period: 4s; --pulse-steps: steps(60); }
 @keyframes atlas-pulse { to { stroke-dashoffset: 0; } }
 
+/* Shimmer animates opacity only — compositor-friendly as is. */
 .shimmer path { fill: #fff; stroke: none; }
 .shimmer.line path { fill: none; stroke: #fff; }
 .shimmer { animation: atlas-shimmer 12s ease-in-out infinite; opacity: 0; }
 .shimmer.line { animation-delay: -4s; }
 @keyframes atlas-shimmer { 0%, 100% { opacity: 0; } 50% { opacity: .14; } }
 
-@media (prefers-reduced-motion: reduce) { .pulse path, .shimmer, .weather > div { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .pulse path, .shimmer, .weather div::before, .weather div::after { animation: none; } }
 
-/* --- Weather overlays. Periods divide 60s; intensity via --wx.
-   Deliberately NOT subtle — they must read from across the room, on idle maps too. --- */
+/* --- Weather overlays. Compositor-only: each layer is an oversized pseudo-element
+   holding a tiling SVG pattern, moved with a transform by an exact tile multiple,
+   so the loop is seamless and nothing repaints. Periods divide 60s. --- */
 .weather { position: absolute; inset: 0; pointer-events: none; }
-.weather > div { position: absolute; inset: 0; opacity: 0; transition: opacity 8s ease-in-out; }
-
-/* Rain: gray streak lines, two depths. */
-.wx-rain {
-  background:
-    repeating-linear-gradient(100deg, rgba(200, 206, 212, .50) 0 2px, transparent 2px 67px),
-    repeating-linear-gradient(100deg, rgba(200, 206, 212, .30) 0 1px, transparent 1px 41px);
-  background-size: 100% 600px, 100% 420px;
-  animation: wx-rain 1s linear infinite;
+.weather > div { position: absolute; inset: 0; opacity: 0; transition: opacity 8s ease-in-out; overflow: hidden; }
+.weather > div::before, .weather > div::after {
+  content: ""; position: absolute; background-repeat: repeat;
+  animation: wx-slide var(--t, 20s) linear infinite;
 }
-@keyframes wx-rain { to { background-position: -106px 600px, -74px 420px; } }
+@keyframes wx-slide { to { transform: translate3d(var(--tx, 0px), var(--ty, 0px), 0); } }
 
-/* Snow: white spheres, drifting down slowly (20s per tile vs rain's 1s). */
-.wx-snow {
-  background:
-    radial-gradient(4px 4px at 25% 20%, rgba(255, 255, 255, .95) 40%, transparent 60%),
-    radial-gradient(3px 3px at 70% 60%, rgba(255, 255, 255, .80) 40%, transparent 60%),
-    radial-gradient(5px 5px at 45% 85%, rgba(255, 255, 255, .90) 40%, transparent 60%),
-    radial-gradient(3px 3px at 90% 35%, rgba(255, 255, 255, .70) 40%, transparent 60%),
-    radial-gradient(2px 2px at 10% 65%, rgba(255, 255, 255, .60) 40%, transparent 60%);
-  background-size: 260px 260px, 200px 200px, 340px 340px, 220px 220px, 170px 170px;
-  animation: wx-snow 20s linear infinite;
+/* Rain: gray slanted lines. Tiles 128x512 / 96x384; travel = one tile diagonal. */
+.wx-rain::before {
+  inset: -512px -128px 0 0; --tx: -128px; --ty: 512px; --t: 1s;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='128' height='512'><g stroke='%23C8CED4' stroke-width='2' stroke-linecap='round'><line x1='20' y1='30' x2='4' y2='94' opacity='.55'/><line x1='70' y1='120' x2='54' y2='184' opacity='.45'/><line x1='110' y1='10' x2='94' y2='74' opacity='.5'/><line x1='40' y1='250' x2='24' y2='314' opacity='.5'/><line x1='95' y1='330' x2='79' y2='394' opacity='.45'/><line x1='12' y1='420' x2='-4' y2='484' opacity='.55'/><line x1='120' y1='440' x2='104' y2='504' opacity='.4'/></g></svg>");
 }
-@keyframes wx-snow { to { background-position: 30px 260px, -24px 200px, 40px 340px, -26px 220px, 18px 170px; } }
+.wx-rain::after {
+  inset: -384px -96px 0 0; --tx: -96px; --ty: 384px; --t: .75s;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='384'><g stroke='%23C8CED4' stroke-width='1' stroke-linecap='round'><line x1='30' y1='40' x2='18' y2='88' opacity='.35'/><line x1='72' y1='150' x2='60' y2='198' opacity='.3'/><line x1='10' y1='240' x2='-2' y2='288' opacity='.35'/><line x1='58' y1='310' x2='46' y2='358' opacity='.3'/></g></svg>");
+}
 
-/* Dust/sandstorm: tan smoke banks drifting across everything (derived from wind, not a WMO code). */
-.wx-dust {
-  background:
-    radial-gradient(420px 240px at 20% 30%, rgba(214, 178, 120, .38), transparent 70%),
-    radial-gradient(560px 280px at 70% 60%, rgba(198, 158, 102, .30), transparent 70%),
-    radial-gradient(380px 220px at 45% 82%, rgba(226, 194, 142, .32), transparent 70%),
-    radial-gradient(500px 200px at 90% 18%, rgba(190, 152, 100, .26), transparent 70%);
-  background-size: 1200px 100%, 1600px 100%, 1000px 100%, 1400px 100%;
-  background-repeat: repeat-x;
-  animation: wx-dust 30s linear infinite;
+/* Snow: white spheres. Small far layer falls slowly; bigger near layer a bit faster with drift. */
+.wx-snow::before {
+  inset: -600px 0 0 -220px; --tx: 220px; --ty: 600px; --t: 20s;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='600'><g fill='white'><circle cx='30' cy='40' r='1.6' opacity='.7'/><circle cx='120' cy='110' r='1.3' opacity='.55'/><circle cx='190' cy='60' r='1.8' opacity='.65'/><circle cx='70' cy='210' r='1.4' opacity='.6'/><circle cx='160' cy='280' r='1.7' opacity='.7'/><circle cx='20' cy='350' r='1.2' opacity='.5'/><circle cx='110' cy='420' r='1.8' opacity='.65'/><circle cx='200' cy='470' r='1.4' opacity='.55'/><circle cx='55' cy='540' r='1.6' opacity='.7'/></g></svg>");
 }
-@keyframes wx-dust { to { background-position: 1200px 0, 1600px 0, 1000px 0, 1400px 0; } }
+.wx-snow::after {
+  inset: -720px 0 0 -380px; --tx: 380px; --ty: 720px; --t: 15s;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='380' height='720'><g fill='white'><circle cx='60' cy='60' r='3.2' opacity='.95'/><circle cx='220' cy='150' r='2.6' opacity='.8'/><circle cx='330' cy='70' r='3.6' opacity='.9'/><circle cx='140' cy='300' r='2.8' opacity='.85'/><circle cx='300' cy='400' r='3.2' opacity='.9'/><circle cx='40' cy='470' r='2.4' opacity='.75'/><circle cx='200' cy='560' r='3.4' opacity='.95'/><circle cx='340' cy='650' r='2.6' opacity='.8'/></g></svg>");
+}
 
-.wx-fog {
-  background: linear-gradient(180deg, rgba(170, 165, 150, .14), rgba(170, 165, 150, .30) 50%, rgba(170, 165, 150, .14));
-  background-size: 200% 100%;
-  animation: wx-fog 30s linear infinite;
+/* Dust/sandstorm: tan smoke banks drifting sideways, two parallax layers. */
+.wx-dust::before {
+  inset: 0 0 0 -1400px; --tx: 1400px; --ty: 0px; --t: 30s;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1400' height='900'><defs><radialGradient id='a' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='%23D6B278' stop-opacity='.42'/><stop offset='1' stop-color='%23D6B278' stop-opacity='0'/></radialGradient></defs><ellipse cx='280' cy='270' rx='420' ry='240' fill='url(%23a)'/><ellipse cx='950' cy='540' rx='560' ry='280' fill='url(%23a)'/><ellipse cx='1250' cy='160' rx='500' ry='200' fill='url(%23a)'/></svg>");
 }
-@keyframes wx-fog { to { background-position: 200% 0; } }
-.wx-flash { background: rgba(255, 244, 200, .9); }
+.wx-dust::after {
+  inset: 0 0 0 -1000px; --tx: 1000px; --ty: 0px; --t: 20s;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1000' height='900'><defs><radialGradient id='b' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='%23E2C28E' stop-opacity='.34'/><stop offset='1' stop-color='%23E2C28E' stop-opacity='0'/></radialGradient></defs><ellipse cx='450' cy='740' rx='380' ry='220' fill='url(%23b)'/><ellipse cx='850' cy='240' rx='340' ry='260' fill='url(%23b)'/></svg>");
+}
+
+/* Fog: broad soft banks sliding slowly. */
+.wx-fog::before {
+  inset: 0 0 0 -1200px; --tx: 1200px; --ty: 0px; --t: 30s;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'><defs><radialGradient id='f' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='%23AAA596' stop-opacity='.3'/><stop offset='1' stop-color='%23AAA596' stop-opacity='0'/></radialGradient></defs><ellipse cx='350' cy='400' rx='560' ry='330' fill='url(%23f)'/><ellipse cx='950' cy='250' rx='480' ry='280' fill='url(%23f)'/><ellipse cx='800' cy='640' rx='520' ry='260' fill='url(%23f)'/></svg>");
+}
+
+.wx-flash { background: rgba(255, 244, 200, .9); overflow: visible; }
+.wx-flash::before, .wx-flash::after { content: none; }
 
 .wx-state-rain  .wx-rain,
 .wx-state-storm .wx-rain { opacity: calc(var(--wx, .6) * .9); }

@@ -67,8 +67,27 @@ Lively is closed (`npm run lively` handles the running session). The optional sc
 note it spawns a second page instance, so the in-page idle crossfade is the state-keeping
 mechanism and the screensaver is just a layer on top.
 
-In Lively's UI the wallpaper exposes two custom properties: Mode (auto/active/idle) and the idle
-threshold in minutes.
+## Controls
+
+Lively tray icon -> open Lively -> hover the Project Atlas tile -> "..." -> **Customize**:
+
+- **Mode** — auto / active / idle (auto = mouse-driven idle timer)
+- **Idle threshold** — minutes before the country maps fade in
+- **Weather** — auto (live Open-Meteo data) or force clear/cloudy/fog/rain/snow/dust/storm
+- **Sun** — auto (local solar time) or force day/night
+
+Everything else is config: map centers/zooms/themes and panel assignments live in
+`config/atlas.config.js`; overlay looks in `app/atlas.css`. After editing either, run
+`npm run export:all` (only if maps changed) and `npm run lively` to redeploy.
+
+## Performance
+
+Measured at desktop: ~0.7 % total CPU and ~4 % of one GPU 3D engine for the whole span. All
+weather layers are oversized tiling SVG patterns moved by whole-tile transforms (compositor-only,
+zero repaint), road pulses run at 15 fps via `steps()`, shimmer is opacity-only, and the night
+glow is a static widened stroke clone instead of a `drop-shadow` filter. The Windows screensaver
+spawns a second page instance while active — expect roughly double cost during it, and nothing
+after it closes.
 
 ## Hardware (what I run it on)
 

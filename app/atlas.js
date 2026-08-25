@@ -47,19 +47,20 @@
 
   // Ambient motion: traffic pulses on major/high roads, shimmer on water.
   function animate(svg) {
-    const clone = (sel, cls) => {
+    const clone = (sel, cls, before) => {
       const g = svg.querySelector(sel); if (!g) return null;
       const c = g.cloneNode(true);
       c.removeAttribute("id"); c.setAttribute("class", cls);
-      g.after(c);
+      c.querySelectorAll("path").forEach((p) => p.removeAttribute("class"));
+      if (before) g.before(c); else g.after(c);
       return c;
     };
+    clone("#layer-road-major", "glowline", true); // static night glow (no filters)
     ["major", "high"].forEach((tier) => {
       const g = clone("#layer-road-" + tier, "pulse " + tier);
       if (!g) return;
       const period = tier === "major" ? 6 : 4;
       g.querySelectorAll("path").forEach((p, i) => {
-        p.removeAttribute("class");
         p.style.animationDelay = -((i * 0.618 * period) % period).toFixed(3) + "s";
       });
     });
@@ -117,6 +118,12 @@
   window.livelyPropertyListener = function (name, val) {
     if (name === "mode") { forced = ["auto", "active", "idle"][val] === "auto" ? null : ["auto", "active", "idle"][val]; tick(); }
     if (name === "idleMinutes") { idleMs = Number(val) * 60000; tick(); }
+    if (name === "weather") {
+      const states = ["auto", "clear", "cloudy", "fog", "rain", "snow", "dust", "storm"];
+      const wx = states[val] || "auto";
+      ATLAS.modules.weather && ATLAS.modules.weather.setForce(wx === "auto" ? null : wx);
+    }
+    if (name === "sun") { forcedNight = [null, 0, 1][val]; if (typeof drift === "function") drift(); }
   };
 
   // ---- Day/night "city lights" drift (no network) ------------------------
@@ -152,7 +159,7 @@
     const mix = (i) => Math.round(c(a, i) + (c(b, i) - c(a, i)) * t).toString(16).padStart(2, "0");
     return "#" + mix(1) + mix(3) + mix(5);
   };
-  const forcedNight = qs.get("night") !== null ? Number(qs.get("night")) : null;
+  let forcedNight = qs.get("night") !== null ? Number(qs.get("night")) : null;
   function drift() {
     const now = new Date();
     for (const p of ATLAS.panels) {

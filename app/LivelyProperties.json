@@ -1,4 +1,6 @@
 {
   "mode": { "type": "dropdown", "text": "Mode", "value": 0, "items": ["auto", "active", "idle"] },
-  "idleMinutes": { "type": "slider", "text": "Idle threshold (minutes)", "value": 5, "min": 1, "max": 60, "step": 1 }
+  "idleMinutes": { "type": "slider", "text": "Idle threshold (minutes)", "value": 5, "min": 1, "max": 60, "step": 1 },
+  "weather": { "type": "dropdown", "text": "Weather (auto = live data)", "value": 0, "items": ["auto", "clear", "cloudy", "fog", "rain", "snow", "dust", "storm"] },
+  "sun": { "type": "dropdown", "text": "Sun (auto = local solar time)", "value": 0, "items": ["auto", "day", "night"] }
 }
