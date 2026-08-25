@@ -1,7 +1,7 @@
 # Atlas — living map wallpapers across three monitors
 
 Five map posters — United States, New Mexico, Albuquerque, Nepal, Kathmandu — rendered as one
-animated wallpaper page spanning three monitors. Roads carry slow traffic pulses, water shimmers,
+animated wallpaper page spanning three monitors. Tiny lights travel the actual road geometry, water shimmers,
 the gold shifts from pale daylight champagne to glowing night gold with the local sun, and live
 weather draws rain, snow, fog and desert dust over the city panels (idle country maps included). Black and gold, true vector, one codebase.
 
@@ -83,7 +83,10 @@ Everything else is config: map centers/zooms/themes and panel assignments live i
 ## Performance
 
 Measured at desktop: well under 1 % total CPU and ~3 % of one GPU 3D engine for the whole span.
-`npm run lively` closes existing wallpapers before setting the new one — replacing a running web
+Traffic is CSS Motion Path: each light is a tiny composited layer animating `offset-distance`
+along the real road path — smooth 60 fps with near-zero paint, unlike `stroke-dashoffset`
+which repaints the whole span-sized layer. Shimmer steps at 4 Hz with imperceptible per-step
+deltas. `npm run lively` closes existing wallpapers before setting the new one — replacing a running web
 wallpaper on Lively 2.2.1 can otherwise leave the old player process alive as a zombie, silently
 doubling compositor cost. All
 weather layers are oversized tiling SVG patterns moved by whole-tile transforms (compositor-only,

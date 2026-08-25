@@ -56,21 +56,44 @@
       return c;
     };
     clone("#layer-road-major", "glowline", true); // static night glow (no filters)
-    // One merged path per tier: the dash pattern flows through every road, but the
-    // browser tracks a single animation instead of hundreds of per-path ones.
+    // Traffic: small dots traveling the actual road geometry via CSS Motion Path.
+    // Each dot is a tiny composited layer animating offset-distance on the GPU —
+    // smooth 60fps with near-zero paint, unlike stroke-dashoffset which repaints
+    // the whole span-sized layer. Durations are divisors of 60s (seamless loop).
     const NS = "http://www.w3.org/2000/svg";
-    ["major", "high"].forEach((tier) => {
+    const DIVISORS = [5, 6, 10, 12, 15, 20, 30, 60];
+    const CAR_BUDGET = 90; // per svg
+    const roads = [];
+    for (const tier of ["major", "high"]) {
       const src = svg.querySelector("#layer-road-" + tier);
-      if (!src) return;
-      const d = Array.from(src.querySelectorAll("path")).map((p) => p.getAttribute("d")).join(" ");
-      if (!d) return;
-      const g = document.createElementNS(NS, "g");
-      g.setAttribute("class", "pulse " + tier);
-      const path = document.createElementNS(NS, "path");
-      path.setAttribute("d", d);
-      g.appendChild(path);
-      src.after(g);
-    });
+      if (!src) continue;
+      for (const path of src.querySelectorAll("path")) {
+        const len = path.getTotalLength();
+        if (len > 250) roads.push({ tier, d: path.getAttribute("d"), len });
+      }
+    }
+    roads.sort((a, b) => b.len - a.len);
+    const cars = document.createElementNS(NS, "g");
+    cars.setAttribute("class", "cars");
+    let used = 0;
+    for (const r of roads) {
+      if (used >= CAR_BUDGET) break;
+      const speed = r.tier === "major" ? 90 : 60; // px/s target
+      const ideal = r.len / speed;
+      const T = DIVISORS.reduce((a, b) => (Math.abs(b - ideal) < Math.abs(a - ideal) ? b : a));
+      const n = Math.min(Math.max(1, Math.round(r.len / 900)), CAR_BUDGET - used);
+      for (let k = 0; k < n; k++) {
+        const c = document.createElementNS(NS, "circle");
+        c.setAttribute("class", "car " + r.tier);
+        c.setAttribute("r", r.tier === "major" ? "2.4" : "1.8");
+        c.style.offsetPath = "path('" + r.d + "')";
+        c.style.animationDuration = T + "s";
+        c.style.animationDelay = (-(k / n) * T).toFixed(2) + "s";
+        cars.appendChild(c);
+        used++;
+      }
+    }
+    if (used) svg.appendChild(cars);
     clone("#layer-water", "shimmer");
     clone("#layer-waterway", "shimmer line");
   }

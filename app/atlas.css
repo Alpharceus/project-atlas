@@ -18,34 +18,29 @@ html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
   stroke-linecap: round; stroke-linejoin: round; transition: stroke-opacity 30s linear;
 }
 svg.night .glowline path { stroke-opacity: .15; }
-.slot svg.night .pulse path { stroke-opacity: 1; }
-.slot svg:not(.night) .pulse path { stroke-opacity: .5; }
+.slot svg.night .car { opacity: .95; }
+.slot svg:not(.night) .car { opacity: .5; }
 
 /* Legacy tint element (unused by day/night now; kept as an anchor for overlay stacking). */
 .tint { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
 
 /* --- Ambient animation. Every period divides ATLAS_CONFIG.loopSeconds (60s).
-   Pulses are paint-bound (stroke-dashoffset), so they run at 15fps via steps() —
-   plenty for slow dashes, ~4x fewer repaints of the span-sized surface. --- */
-.pulse path {
-  stroke: #fff; stroke-opacity: .85; fill: none;
-  stroke-linecap: round; stroke-linejoin: round;
-  stroke-dasharray: var(--dash, 12) var(--gap, 148);
-  stroke-dashoffset: var(--len, 160);
-  animation: atlas-pulse var(--pulse-period, 6s) var(--pulse-steps, steps(90)) infinite;
+   Traffic dots ride the road geometry via CSS Motion Path — tiny composited
+   layers, smooth 60fps, near-zero paint. Durations/delays set per dot in JS. --- */
+.car {
+  fill: #FFE9A8; offset-rotate: 0deg; offset-distance: 0%;
+  animation: atlas-car 12s linear infinite;
 }
-.pulse.major path { --dash: 16; --gap: 224; --len: 240; --pulse-period: 6s; --pulse-steps: steps(45); }
-.pulse.high  path { --dash: 8;  --gap: 112; --len: 120; --pulse-period: 4s; --pulse-steps: steps(30); }
-@keyframes atlas-pulse { to { stroke-dashoffset: 0; } }
+@keyframes atlas-car { from { offset-distance: 0%; } to { offset-distance: 100%; } }
 
 /* Shimmer animates opacity only — compositor-friendly as is. */
 .shimmer path { fill: #fff; stroke: none; }
 .shimmer.line path { fill: none; stroke: #fff; }
-.shimmer { animation: atlas-shimmer 12s ease-in-out infinite; opacity: 0; }
+.shimmer { animation: atlas-shimmer 12s steps(48) infinite; opacity: 0; }
 .shimmer.line { animation-delay: -4s; }
 @keyframes atlas-shimmer { 0%, 100% { opacity: 0; } 50% { opacity: .14; } }
 
-@media (prefers-reduced-motion: reduce) { .pulse path, .shimmer, .weather div::before, .weather div::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .car, .shimmer, .weather div::before, .weather div::after { animation: none; } }
 
 /* --- Weather overlays. Compositor-only: each layer is an oversized pseudo-element
    holding a tiling SVG pattern, moved with a transform by an exact tile multiple,
