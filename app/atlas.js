@@ -86,32 +86,87 @@
   // getPointAtLength is sampled ONCE at startup into uniform-by-length point
   // arrays; each frame draws all dots into one canvas layer. No per-dot DOM,
   // no per-dot compositor layers; rAF stops automatically when Lively hides us.
-  const TRAFFIC = { speed: { major: 90, high: 60 }, radius: { major: 2.4, high: 1.8 }, budget: 90, divisors: [5, 6, 10, 12, 15, 20, 30, 60] };
+  const TRAFFIC = { speed: { major: 90, high: 60 }, radius: { major: 2.2, high: 1.7 }, budget: 90, divisors: [5, 6, 10, 12, 15, 20, 30, 60], step: 24 };
+  function samplePaths(layer) {
+    // A single <path> may hold several disjoint subpaths (the exporter merges
+    // rings). Split wherever consecutive samples jump farther than the step
+    // allows, or a dot would draw straight chords between distant roads.
+    const frags = [];
+    for (const path of layer.querySelectorAll("path")) {
+      const len = path.getTotalLength();
+      if (len < 100) continue;
+      const n = Math.floor(len / TRAFFIC.step) + 1;
+      let pts = [];
+      let px = 0, py = 0;
+      for (let i = 0; i <= n; i++) {
+        const pt = path.getPointAtLength(Math.min(i * TRAFFIC.step, len));
+        if (pts.length && Math.hypot(pt.x - px, pt.y - py) > TRAFFIC.step * 2.5) {
+          if (pts.length >= 6) frags.push(pts);
+          pts = [];
+        }
+        pts.push(pt.x, pt.y);
+        px = pt.x; py = pt.y;
+      }
+      if (pts.length >= 6) frags.push(pts);
+    }
+    return frags;
+  }
+  // The exporter splits roads at tile borders; without stitching, lights would
+  // vanish mid-screen at invisible seams. Join fragments whose endpoints touch.
+  function stitch(frags) {
+    const key = (x, y) => Math.round(x / 3) * 100000 + Math.round(y / 3);
+    const rev = (f) => { const o = []; for (let i = f.length - 2; i >= 0; i -= 2) o.push(f[i], f[i + 1]); return o; };
+    const heads = new Map(), tails = new Map();
+    const addTo = (m, k, v) => { const a = m.get(k); if (a) a.push(v); else m.set(k, [v]); };
+    frags.forEach((f, i) => { addTo(heads, key(f[0], f[1]), i); addTo(tails, key(f[f.length - 2], f[f.length - 1]), i); });
+    const used = new Array(frags.length).fill(false);
+    const take = (m, k) => { const a = m.get(k); if (!a) return -1; while (a.length) { const i = a[a.length - 1]; if (used[i]) a.pop(); else return i; } return -1; };
+    const chains = [];
+    for (let i = 0; i < frags.length; i++) {
+      if (used[i]) continue;
+      used[i] = true;
+      let chain = frags[i].slice();
+      for (let g = 0; g < 400; g++) { // forward
+        const k = key(chain[chain.length - 2], chain[chain.length - 1]);
+        let j = take(heads, k), r = false;
+        if (j < 0) { j = take(tails, k); r = true; }
+        if (j < 0) break;
+        used[j] = true;
+        const f = r ? rev(frags[j]) : frags[j];
+        chain = chain.concat(f.slice(2));
+      }
+      for (let g = 0; g < 400; g++) { // backward
+        const k = key(chain[0], chain[1]);
+        let j = take(tails, k), r = false;
+        if (j < 0) { j = take(heads, k); r = true; }
+        if (j < 0) break;
+        used[j] = true;
+        const f = r ? rev(frags[j]) : frags[j];
+        chain = f.slice(0, f.length - 2).concat(chain);
+      }
+      chains.push(chain);
+    }
+    return chains;
+  }
   function buildDots(svg) {
     if (!svg) return [];
-    const routes = [];
+    const dots = []; let budget = TRAFFIC.budget;
     for (const tier of ["major", "high"]) {
       const layer = svg.querySelector("#layer-road-" + tier);
       if (!layer) continue;
-      for (const path of layer.querySelectorAll("path")) {
-        const len = path.getTotalLength();
-        if (len < 250) continue;
-        const pts = new Float32Array(2 * (Math.floor(len / 24) + 1));
-        for (let i = 0, d = 0; d <= len; d += 24, i++) {
-          const pt = path.getPointAtLength(d);
-          pts[2 * i] = pt.x; pts[2 * i + 1] = pt.y;
-        }
-        routes.push({ tier, len, pts });
+      const chains = stitch(samplePaths(layer));
+      chains.sort((a, b) => b.length - a.length);
+      for (const c of chains) {
+        if (budget <= 0) break;
+        const len = (c.length / 2 - 1) * TRAFFIC.step;
+        if (len < 300) continue;
+        const ideal = len / TRAFFIC.speed[tier];
+        const T = TRAFFIC.divisors.reduce((x, y) => (Math.abs(y - ideal) < Math.abs(x - ideal) ? y : x));
+        const n = Math.min(Math.max(1, Math.round(len / 900)), budget);
+        const pts = Float32Array.from(c);
+        const loop = Math.hypot(c[0] - c[c.length - 2], c[1] - c[c.length - 1]) < 6;
+        for (let k = 0; k < n; k++) { dots.push({ pts, T, off: k / n, tier, loop }); budget--; }
       }
-    }
-    routes.sort((a, b) => b.len - a.len);
-    const dots = []; let used = 0;
-    for (const r of routes) {
-      if (used >= TRAFFIC.budget) break;
-      const ideal = r.len / TRAFFIC.speed[r.tier];
-      const T = TRAFFIC.divisors.reduce((a, b) => (Math.abs(b - ideal) < Math.abs(a - ideal) ? b : a));
-      const n = Math.min(Math.max(1, Math.round(r.len / 900)), TRAFFIC.budget - used);
-      for (let k = 0; k < n; k++) { dots.push({ pts: r.pts, T, off: k / n, radius: TRAFFIC.radius[r.tier] }); used++; }
     }
     return dots;
   }
@@ -125,7 +180,15 @@
     for (const slot of Object.values(p.slots)) p.trafficDots[slot.mapId] = buildDots(slot.svg);
     p.night = 0;
   }
+  function dotPos(d, fi, out) {
+    const m = d.pts.length / 2 - 1;
+    if (d.loop) fi = ((fi % m) + m) % m; else fi = Math.max(0, Math.min(m, fi));
+    const i = Math.floor(fi), f = fi - i, i2 = Math.min(i + 1, m);
+    out[0] = d.pts[2 * i] + (d.pts[2 * i2] - d.pts[2 * i]) * f;
+    out[1] = d.pts[2 * i + 1] + (d.pts[2 * i2 + 1] - d.pts[2 * i + 1]) * f;
+  }
   let lastFrame = 0;
+  const P0 = [0, 0], P1 = [0, 0], P2 = [0, 0];
   function drawTraffic(ts) {
     requestAnimationFrame(drawTraffic);
     if (ts - lastFrame < 32) return; // ~30fps
@@ -138,16 +201,26 @@
       const mapId = p.slots.fixed ? p.slots.fixed.mapId : p.slots[ATLAS.mode].mapId;
       const dots = p.trafficDots[mapId];
       if (!dots || !dots.length) continue;
-      ctx.globalAlpha = 0.5 + 0.45 * p.night;
-      ctx.fillStyle = "#FFE9A8";
+      const base = 0.5 + 0.45 * p.night;
+      ctx.fillStyle = ctx.strokeStyle = "#FFE9A8";
+      ctx.lineCap = "round";
       for (const d of dots) {
         const phase = ((t / d.T) + d.off) % 1;
-        const fi = phase * (d.pts.length / 2 - 1);
-        const i = Math.floor(fi), f = fi - i;
-        const x = d.pts[2 * i] + (d.pts[2 * i + 2] - d.pts[2 * i]) * f;
-        const y = d.pts[2 * i + 1] + (d.pts[2 * i + 3] - d.pts[2 * i + 1]) * f;
-        ctx.beginPath(); ctx.arc(x, y, d.radius, 0, 6.2832); ctx.fill();
+        const m = d.pts.length / 2 - 1;
+        const fi = phase * m;
+        const ends = d.loop ? 1 : Math.min(1, phase * 12, (1 - phase) * 12); // fade at route ends, never pop
+        const A = base * ends;
+        if (A <= 0.02) continue;
+        const r = TRAFFIC.radius[d.tier];
+        dotPos(d, fi, P0); dotPos(d, fi - 1.2, P1); dotPos(d, fi - 2.4, P2);
+        ctx.globalAlpha = A * 0.2; ctx.lineWidth = r * 1.5;
+        ctx.beginPath(); ctx.moveTo(P2[0], P2[1]); ctx.lineTo(P1[0], P1[1]); ctx.lineTo(P0[0], P0[1]); ctx.stroke();
+        ctx.globalAlpha = A * 0.45; ctx.lineWidth = r * 1.9;
+        ctx.beginPath(); ctx.moveTo(P1[0], P1[1]); ctx.lineTo(P0[0], P0[1]); ctx.stroke();
+        ctx.globalAlpha = A;
+        ctx.beginPath(); ctx.arc(P0[0], P0[1], r, 0, 6.2832); ctx.fill();
       }
+      ctx.globalAlpha = 1;
     }
   }
   requestAnimationFrame(drawTraffic);

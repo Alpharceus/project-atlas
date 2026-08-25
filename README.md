@@ -84,9 +84,11 @@ Everything else is config: map centers/zooms/themes and panel assignments live i
 
 Measured at desktop: well under 1 % total CPU and ~3 % of one GPU 3D engine for the whole span.
 Traffic lights are a single canvas per panel: road geometry is sampled once at startup
-(`getPointAtLength` into uniform point arrays), then one 30 fps rAF pass draws every dot —
+(`getPointAtLength` into uniform point arrays), then one 30 fps rAF pass draws every light as a comet streak (head + tapered tail) —
 one composited layer per panel, no per-dot DOM, and it pauses automatically when the page is
-hidden. (CSS Motion Path was tried first: `offset-distance` is not compositor-accelerated in
+hidden. Road fragments are stitched across the exporter's tile seams (and split at subpath
+jumps) so lights travel whole routes instead of popping at invisible boundaries, and fade
+out at true dead ends. (CSS Motion Path was tried first: `offset-distance` is not compositor-accelerated in
 WebView2, costing 14% of a core; the canvas costs ~0.4%.) Shimmer steps at 4 Hz with
 imperceptible per-step deltas. `npm run lively` closes existing wallpapers before setting the new one — replacing a running web
 wallpaper on Lively 2.2.1 can otherwise leave the old player process alive as a zombie, silently
