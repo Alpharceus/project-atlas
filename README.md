@@ -104,10 +104,20 @@ after it closes.
 Ryzen 7 9800X3D · RTX 5070 Ti · triple monitors: 1920×1080 landscape (Kathmandu/Nepal),
 2560×1440 primary (US), 1080×1920 portrait (Albuquerque/New Mexico).
 
+## Live layers
+
+- **Aircraft** (`app/modules/planes.js`, home only): adsb.lol point queries every 10 s per city,
+  dead-reckoned between polls, drawn as small arrows in the shared canvas pass. No public
+  ADS-B API sends CORS headers, so requests go through `tools/atlas-helper.mjs` — a local
+  proxy on `127.0.0.1:8766` with an 8 s cache, autostarted from the Startup folder
+  (`atlas-helper.vbs`). Without it, planes are simply absent.
+- **ISS + terminator** (`app/modules/iss.js`): CelesTrak TLE cached in localStorage (max daily
+  fetch), propagated locally with a vendored satellite.js v5 UMD — zero network per frame.
+  The country maps (US/NM/Nepal) get a warm wash on the sunlit side of the terminator plus
+  the ISS marker and its 45-minute leading groundtrack when it crosses the map.
+
 ## Roadmap
 
-- Aircraft overlays (adsb.lol bounding-box queries) for the city panels
-- ISS pass + day/night terminator on the country maps (CelesTrak TLE + local propagation)
 - Baked-video tier for GNOME/Wayland at a second site: headless capture of this same page,
   NVENC-encoded seamless loops, swapped by a D-Bus idle watcher
 
@@ -116,4 +126,5 @@ Ryzen 7 9800X3D · RTX 5070 Ti · triple monitors: 1920×1080 landscape (Kathman
 Map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (ODbL), served
 as vector tiles by [OpenFreeMap](https://openfreemap.org/). Poster layer model and theme schema
 after Terraink (AGPL-3.0; referenced, not redistributed — the exporter here is an independent
-implementation). Weather by Open-Meteo (CC BY 4.0).
+implementation). Weather by Open-Meteo (CC BY 4.0). Aircraft data via [adsb.lol](https://adsb.lol) (ODbL).
+Orbital elements from [CelesTrak](https://celestrak.org); propagation by satellite.js (MIT, vendored).

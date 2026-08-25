@@ -11,6 +11,8 @@
   const site = CFG.sites[siteId];
   if (!site) throw new Error("unknown site " + siteId);
   site.monitors = CFG.resolveMonitors(siteId);
+  const only = qs.get("only"); // debug: render a single panel at origin
+  if (only) site.monitors = site.monitors.filter((m) => [m.fixed, m.active, m.idle].includes(only));
 
   // ---- Layout: virtual desktop -> page coordinates -----------------------
   const minX = Math.min(...site.monitors.map((m) => m.x));
@@ -120,25 +122,46 @@
     const addTo = (m, k, v) => { const a = m.get(k); if (a) a.push(v); else m.set(k, [v]); };
     frags.forEach((f, i) => { addTo(heads, key(f[0], f[1]), i); addTo(tails, key(f[f.length - 2], f[f.length - 1]), i); });
     const used = new Array(frags.length).fill(false);
-    const take = (m, k) => { const a = m.get(k); if (!a) return -1; while (a.length) { const i = a[a.length - 1]; if (used[i]) a.pop(); else return i; } return -1; };
+    // Direction of a fragment at its head/tail (unit-ish vector over one sample).
+    const dirAt = (f, atHead) => atHead
+      ? [f[2] - f[0], f[3] - f[1]]
+      : [f[f.length - 2] - f[f.length - 4], f[f.length - 1] - f[f.length - 3]];
+    const cont = (a, b) => { // continuity: cos of angle between directions
+      const la = Math.hypot(a[0], a[1]) || 1, lb = Math.hypot(b[0], b[1]) || 1;
+      return (a[0] * b[0] + a[1] * b[1]) / (la * lb);
+    };
+    // Pick the unused candidate that continues straightest; junctions where a
+    // route would hairpin into another road are left unjoined (cos < .3 ~ 72deg).
+    const best = (k, outDir, wantHead) => {
+      let bi = -1, bc = 0.3, brev = false;
+      for (const [m, isHead] of [[heads, true], [tails, false]]) {
+        for (const i of m.get(k) || []) {
+          if (used[i]) continue;
+          const d = dirAt(frags[i], isHead);
+          const dd = isHead === wantHead ? d : [-d[0], -d[1]];
+          const c = cont(outDir, dd);
+          if (c > bc) { bc = c; bi = i; brev = isHead !== wantHead; }
+        }
+      }
+      return [bi, brev];
+    };
     const chains = [];
     for (let i = 0; i < frags.length; i++) {
       if (used[i]) continue;
       used[i] = true;
       let chain = frags[i].slice();
       for (let g = 0; g < 400; g++) { // forward
-        const k = key(chain[chain.length - 2], chain[chain.length - 1]);
-        let j = take(heads, k), r = false;
-        if (j < 0) { j = take(tails, k); r = true; }
+        const n = chain.length;
+        const outDir = [chain[n - 2] - chain[n - 4], chain[n - 1] - chain[n - 3]];
+        const [j, r] = best(key(chain[n - 2], chain[n - 1]), outDir, true);
         if (j < 0) break;
         used[j] = true;
         const f = r ? rev(frags[j]) : frags[j];
         chain = chain.concat(f.slice(2));
       }
       for (let g = 0; g < 400; g++) { // backward
-        const k = key(chain[0], chain[1]);
-        let j = take(tails, k), r = false;
-        if (j < 0) { j = take(heads, k); r = true; }
+        const outDir = [chain[0] - chain[2], chain[1] - chain[3]];
+        const [j, r] = best(key(chain[0], chain[1]), outDir, false);
         if (j < 0) break;
         used[j] = true;
         const f = r ? rev(frags[j]) : frags[j];
@@ -177,6 +200,7 @@
     p.el.insertBefore(canvas, p.tint);
     p.trafficCtx = canvas.getContext("2d");
     p.trafficDots = {};
+    p.canvasHooks = []; // modules draw into the same 30fps pass (planes, iss, ...)
     for (const slot of Object.values(p.slots)) p.trafficDots[slot.mapId] = buildDots(slot.svg);
     p.night = 0;
   }
@@ -212,14 +236,20 @@
         const A = base * ends;
         if (A <= 0.02) continue;
         const r = TRAFFIC.radius[d.tier];
-        dotPos(d, fi, P0); dotPos(d, fi - 1.2, P1); dotPos(d, fi - 2.4, P2);
-        ctx.globalAlpha = A * 0.2; ctx.lineWidth = r * 1.5;
-        ctx.beginPath(); ctx.moveTo(P2[0], P2[1]); ctx.lineTo(P1[0], P1[1]); ctx.lineTo(P0[0], P0[1]); ctx.stroke();
-        ctx.globalAlpha = A * 0.45; ctx.lineWidth = r * 1.9;
-        ctx.beginPath(); ctx.moveTo(P1[0], P1[1]); ctx.lineTo(P0[0], P0[1]); ctx.stroke();
+        // Short tail traced along the actual polyline so it bends with the road.
+        const L = d.tier === "major" ? 1.3 : 0.9; // in samples (~31px / ~22px)
+        const i0 = Math.max(0, fi - L);
+        dotPos(d, fi, P0);
+        ctx.globalAlpha = A * 0.4; ctx.lineWidth = r * 1.7;
+        ctx.beginPath();
+        dotPos(d, i0, P1); ctx.moveTo(P1[0], P1[1]);
+        for (let ii = Math.ceil(i0); ii < fi; ii++) { dotPos(d, ii, P2); ctx.lineTo(P2[0], P2[1]); }
+        ctx.lineTo(P0[0], P0[1]); ctx.stroke();
         ctx.globalAlpha = A;
         ctx.beginPath(); ctx.arc(P0[0], P0[1], r, 0, 6.2832); ctx.fill();
       }
+      ctx.globalAlpha = 1;
+      for (const hook of p.canvasHooks) { try { hook(ctx, p, mapId, t); } catch (e) {} }
       ctx.globalAlpha = 1;
     }
   }
@@ -312,6 +342,15 @@
     }
   }
   drift(); setInterval(drift, 60000);
+
+  // lon/lat -> panel pixel coords for a given map (web mercator, same math as the exporter)
+  ATLAS.project = function (mapId, lon, lat, mon) {
+    const map = CFG.maps[mapId];
+    const S = 512 * Math.pow(2, map.zoom);
+    const mx = (l) => ((l + 180) / 360) * S;
+    const my = (la) => { const r = (la * Math.PI) / 180; return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * S; };
+    return [mx(lon) - mx(map.center[0]) + mon.w / 2, my(lat) - my(map.center[1]) + mon.h / 2];
+  };
 
   // ---- Module registry (milestone 5+) ------------------------------------
   ATLAS.register = function (name, mod) {
