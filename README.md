@@ -2,8 +2,8 @@
 
 Five map posters — United States, New Mexico, Albuquerque, Nepal, Kathmandu — rendered as one
 animated wallpaper page spanning three monitors. Roads carry slow traffic pulses, water shimmers,
-the palette darkens with the local sun, and live weather draws rain, snow and fog over the city
-panels. Black and gold, true vector, one codebase.
+the gold shifts from pale daylight champagne to glowing night gold with the local sun, and live
+weather draws rain, snow, fog and desert dust over the city panels (idle country maps included). Black and gold, true vector, one codebase.
 
 The center monitor always shows the US. The side panels are state-driven, not timer-rotated:
 while you're at the keyboard they show the cities (Albuquerque, Kathmandu); go idle and they
@@ -30,7 +30,11 @@ wallpaper process never restarts, so weather caches and animation phase survive 
   planned).
 - **Poll-and-diff, not push.** Weather polls [Open-Meteo](https://open-meteo.com/) (free, no
   key) every 10 min per city and only touches the DOM when the derived state
-  (clear/cloudy/fog/rain/snow/storm) or rounded temperature actually changes.
+  (clear/cloudy/fog/rain/snow/storm/dust) or rounded temperature actually changes. Rain is gray
+  streak lines, snow is slow white spheres, dust — no WMO code exists for it — is derived from
+  strong gusts on a dry sky and drifts as tan smoke banks. Day/night keeps the black-and-gold
+  theme by moving the *metal*, not an overlay: night is city lights (pure black, rich gold,
+  road glow, full-strength pulses), day is white gold on slightly lifted black.
 
 ## The moving parts
 
@@ -53,7 +57,7 @@ npm run lively          # bundle into Lively Wallpaper and set as span wallpaper
 ```
 
 Preview/capture query params: `site=home|work`, `fit=1` (scale to window), `mode=active|idle`,
-`idleMinutes=N`, `wx=rain|snow|storm|fog|cloudy` (force weather).
+`idleMinutes=N`, `wx=rain|snow|storm|dust|fog|cloudy` (force weather), `night=0..1` (force sun state).
 
 [Lively Wallpaper](https://github.com/rocksdanister/lively) v2.2.1: the CLI only loads wallpapers
 from its own Library, hence the bundling step. `--layout span` does not survive a Lively restart —

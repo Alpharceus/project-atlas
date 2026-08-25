@@ -119,8 +119,10 @@
     if (name === "idleMinutes") { idleMs = Number(val) * 60000; tick(); }
   };
 
-  // ---- Time-of-day palette drift (no network) ----------------------------
-  // Solar elevation from a compact NOAA approximation; tint opacity 0 (day) .. 1 (night).
+  // ---- Day/night "city lights" drift (no network) ------------------------
+  // Solar elevation from a compact NOAA approximation drives a lerp of the gold
+  // palette per panel: day = pale champagne on lifted black, night = rich gold on
+  // pure black with road glow. Debug: ?night=0..1 forces every panel.
   function solarElevation(lon, lat, date) {
     const rad = Math.PI / 180;
     const d = (date - Date.UTC(date.getUTCFullYear(), 0, 1)) / 864e5;
@@ -136,14 +138,33 @@
     const t = Math.max(0, Math.min(1, (elev + 12) / 20));
     return 1 - t * t * (3 - 2 * t);
   }
+  const DAY_NIGHT = { // [day, night] per CSS var; inline vars on the svg beat its scoped <style>
+    "--road-major": ["#EDE3BC", "#E2B23F"],
+    "--road-high": ["#CDBF93", "#B08A2A"],
+    "--road-mid": ["#7A7154", "#6E5518"],
+    "--rail": ["#8C8266", "#7A5E1C"],
+    "--waterway": ["#4A4430", "#3A2F12"],
+    "--text": ["#E8DCAE", "#D4A537"],
+    "--land": ["#0B0904", "#000000"],
+  };
+  const lerpHex = (a, b, t) => {
+    const c = (h, i) => parseInt(h.slice(i, i + 2), 16);
+    const mix = (i) => Math.round(c(a, i) + (c(b, i) - c(a, i)) * t).toString(16).padStart(2, "0");
+    return "#" + mix(1) + mix(3) + mix(5);
+  };
+  const forcedNight = qs.get("night") !== null ? Number(qs.get("night")) : null;
   function drift() {
     const now = new Date();
     for (const p of ATLAS.panels) {
-      const mapId = p.slots.fixed ? p.slots.fixed.mapId : p.slots[ATLAS.mode].mapId;
-      const map = CFG.maps[mapId];
-      const night = nightAmount(solarElevation(map.center[0], map.center[1], now));
-      p.tint.style.opacity = (night * 0.35).toFixed(3);
-      p.el.style.setProperty("--atlas-night", night.toFixed(3));
+      for (const slot of Object.values(p.slots)) {
+        if (!slot.svg) continue;
+        const map = CFG.maps[slot.mapId];
+        const night = forcedNight !== null ? forcedNight
+          : nightAmount(solarElevation(map.center[0], map.center[1], now));
+        for (const [v, [day, nite]] of Object.entries(DAY_NIGHT)) slot.svg.style.setProperty(v, lerpHex(day, nite, night));
+        slot.svg.classList.toggle("night", night > 0.55);
+      }
+      p.el.style.setProperty("--atlas-night", "0");
     }
   }
   drift(); setInterval(drift, 60000);
