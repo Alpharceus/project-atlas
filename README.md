@@ -82,7 +82,10 @@ Everything else is config: map centers/zooms/themes and panel assignments live i
 
 ## Performance
 
-Measured at desktop: ~0.7 % total CPU and ~4 % of one GPU 3D engine for the whole span. All
+Measured at desktop: well under 1 % total CPU and ~3 % of one GPU 3D engine for the whole span.
+`npm run lively` closes existing wallpapers before setting the new one — replacing a running web
+wallpaper on Lively 2.2.1 can otherwise leave the old player process alive as a zombie, silently
+doubling compositor cost. All
 weather layers are oversized tiling SVG patterns moved by whole-tile transforms (compositor-only,
 zero repaint), road pulses run at 15 fps via `steps()`, shimmer is opacity-only, and the night
 glow is a static widened stroke clone instead of a `drop-shadow` filter. The Windows screensaver

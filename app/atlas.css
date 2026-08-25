@@ -34,8 +34,8 @@ svg.night .glowline path { stroke-opacity: .15; }
   stroke-dashoffset: var(--len, 160);
   animation: atlas-pulse var(--pulse-period, 6s) var(--pulse-steps, steps(90)) infinite;
 }
-.pulse.major path { --dash: 16; --gap: 224; --len: 240; --pulse-period: 6s; --pulse-steps: steps(90); }
-.pulse.high  path { --dash: 8;  --gap: 112; --len: 120; --pulse-period: 4s; --pulse-steps: steps(60); }
+.pulse.major path { --dash: 16; --gap: 224; --len: 240; --pulse-period: 6s; --pulse-steps: steps(45); }
+.pulse.high  path { --dash: 8;  --gap: 112; --len: 120; --pulse-period: 4s; --pulse-steps: steps(30); }
 @keyframes atlas-pulse { to { stroke-dashoffset: 0; } }
 
 /* Shimmer animates opacity only — compositor-friendly as is. */
@@ -53,9 +53,17 @@ svg.night .glowline path { stroke-opacity: .15; }
 .weather { position: absolute; inset: 0; pointer-events: none; }
 .weather > div { position: absolute; inset: 0; opacity: 0; transition: opacity 8s ease-in-out; overflow: hidden; }
 .weather > div::before, .weather > div::after {
-  content: ""; position: absolute; background-repeat: repeat;
+  content: none; position: absolute; background-repeat: repeat;
   animation: wx-slide var(--t, 20s) linear infinite;
 }
+/* Layers are created only for the active state — an invisible overlay must not keep
+   an animated composited texture alive (that reshuffling is what flickered the roads). */
+.wx-state-rain  .wx-rain::before,  .wx-state-rain  .wx-rain::after,
+.wx-state-storm .wx-rain::before,  .wx-state-storm .wx-rain::after,
+.wx-state-snow  .wx-snow::before,  .wx-state-snow  .wx-snow::after,
+.wx-state-dust  .wx-dust::before,  .wx-state-dust  .wx-dust::after,
+.wx-state-fog   .wx-fog::before,
+.wx-state-cloudy .wx-fog::before { content: ""; }
 @keyframes wx-slide { to { transform: translate3d(var(--tx, 0px), var(--ty, 0px), 0); } }
 
 /* Rain: gray slanted lines. Tiles 128x512 / 96x384; travel = one tile diagonal. */
@@ -94,8 +102,7 @@ svg.night .glowline path { stroke-opacity: .15; }
   background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'><defs><radialGradient id='f' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='%23AAA596' stop-opacity='.3'/><stop offset='1' stop-color='%23AAA596' stop-opacity='0'/></radialGradient></defs><ellipse cx='350' cy='400' rx='560' ry='330' fill='url(%23f)'/><ellipse cx='950' cy='250' rx='480' ry='280' fill='url(%23f)'/><ellipse cx='800' cy='640' rx='520' ry='260' fill='url(%23f)'/></svg>");
 }
 
-.wx-flash { background: rgba(255, 244, 200, .9); overflow: visible; }
-.wx-flash::before, .wx-flash::after { content: none; }
+.wx-flash { background: rgba(255, 244, 200, .9); }
 
 .wx-state-rain  .wx-rain,
 .wx-state-storm .wx-rain { opacity: calc(var(--wx, .6) * .9); }

@@ -28,6 +28,10 @@ for (const f of (await fs.readdir(path.join(ROOT, "maps"))).filter((f) => f.ends
 console.log("built", LIB);
 
 if (process.argv.includes("--set")) {
+  // closewp first: replacing a running web wallpaper can leave the old player
+  // process alive as a zombie (observed on 2.2.1), doubling GPU/compositor cost.
+  spawnSync(LIVELY, ["closewp", "--monitor", "-1"], { stdio: "inherit" });
+  await new Promise((r) => setTimeout(r, 3000));
   spawnSync(LIVELY, ["--layout", "span"], { stdio: "inherit" });
   await new Promise((r) => setTimeout(r, 2000));
   spawnSync(LIVELY, ["setwp", "--file", LIB], { stdio: "inherit" });

@@ -56,13 +56,20 @@
       return c;
     };
     clone("#layer-road-major", "glowline", true); // static night glow (no filters)
+    // One merged path per tier: the dash pattern flows through every road, but the
+    // browser tracks a single animation instead of hundreds of per-path ones.
+    const NS = "http://www.w3.org/2000/svg";
     ["major", "high"].forEach((tier) => {
-      const g = clone("#layer-road-" + tier, "pulse " + tier);
-      if (!g) return;
-      const period = tier === "major" ? 6 : 4;
-      g.querySelectorAll("path").forEach((p, i) => {
-        p.style.animationDelay = -((i * 0.618 * period) % period).toFixed(3) + "s";
-      });
+      const src = svg.querySelector("#layer-road-" + tier);
+      if (!src) return;
+      const d = Array.from(src.querySelectorAll("path")).map((p) => p.getAttribute("d")).join(" ");
+      if (!d) return;
+      const g = document.createElementNS(NS, "g");
+      g.setAttribute("class", "pulse " + tier);
+      const path = document.createElementNS(NS, "path");
+      path.setAttribute("d", d);
+      g.appendChild(path);
+      src.after(g);
     });
     clone("#layer-water", "shimmer");
     clone("#layer-waterway", "shimmer line");
