@@ -56,44 +56,6 @@
       return c;
     };
     clone("#layer-road-major", "glowline", true); // static night glow (no filters)
-    // Traffic: small dots traveling the actual road geometry via CSS Motion Path.
-    // Each dot is a tiny composited layer animating offset-distance on the GPU —
-    // smooth 60fps with near-zero paint, unlike stroke-dashoffset which repaints
-    // the whole span-sized layer. Durations are divisors of 60s (seamless loop).
-    const NS = "http://www.w3.org/2000/svg";
-    const DIVISORS = [5, 6, 10, 12, 15, 20, 30, 60];
-    const CAR_BUDGET = 90; // per svg
-    const roads = [];
-    for (const tier of ["major", "high"]) {
-      const src = svg.querySelector("#layer-road-" + tier);
-      if (!src) continue;
-      for (const path of src.querySelectorAll("path")) {
-        const len = path.getTotalLength();
-        if (len > 250) roads.push({ tier, d: path.getAttribute("d"), len });
-      }
-    }
-    roads.sort((a, b) => b.len - a.len);
-    const cars = document.createElementNS(NS, "g");
-    cars.setAttribute("class", "cars");
-    let used = 0;
-    for (const r of roads) {
-      if (used >= CAR_BUDGET) break;
-      const speed = r.tier === "major" ? 90 : 60; // px/s target
-      const ideal = r.len / speed;
-      const T = DIVISORS.reduce((a, b) => (Math.abs(b - ideal) < Math.abs(a - ideal) ? b : a));
-      const n = Math.min(Math.max(1, Math.round(r.len / 900)), CAR_BUDGET - used);
-      for (let k = 0; k < n; k++) {
-        const c = document.createElementNS(NS, "circle");
-        c.setAttribute("class", "car " + r.tier);
-        c.setAttribute("r", r.tier === "major" ? "2.4" : "1.8");
-        c.style.offsetPath = "path('" + r.d + "')";
-        c.style.animationDuration = T + "s";
-        c.style.animationDelay = (-(k / n) * T).toFixed(2) + "s";
-        cars.appendChild(c);
-        used++;
-      }
-    }
-    if (used) svg.appendChild(cars);
     clone("#layer-water", "shimmer");
     clone("#layer-waterway", "shimmer line");
   }
@@ -119,6 +81,76 @@
     root.appendChild(panel);
     ATLAS.panels.push(entry);
   });
+
+  // ---- Traffic lights (single canvas per panel, 30fps, loop-exact 60s) ----
+  // getPointAtLength is sampled ONCE at startup into uniform-by-length point
+  // arrays; each frame draws all dots into one canvas layer. No per-dot DOM,
+  // no per-dot compositor layers; rAF stops automatically when Lively hides us.
+  const TRAFFIC = { speed: { major: 90, high: 60 }, radius: { major: 2.4, high: 1.8 }, budget: 90, divisors: [5, 6, 10, 12, 15, 20, 30, 60] };
+  function buildDots(svg) {
+    if (!svg) return [];
+    const routes = [];
+    for (const tier of ["major", "high"]) {
+      const layer = svg.querySelector("#layer-road-" + tier);
+      if (!layer) continue;
+      for (const path of layer.querySelectorAll("path")) {
+        const len = path.getTotalLength();
+        if (len < 250) continue;
+        const pts = new Float32Array(2 * (Math.floor(len / 24) + 1));
+        for (let i = 0, d = 0; d <= len; d += 24, i++) {
+          const pt = path.getPointAtLength(d);
+          pts[2 * i] = pt.x; pts[2 * i + 1] = pt.y;
+        }
+        routes.push({ tier, len, pts });
+      }
+    }
+    routes.sort((a, b) => b.len - a.len);
+    const dots = []; let used = 0;
+    for (const r of routes) {
+      if (used >= TRAFFIC.budget) break;
+      const ideal = r.len / TRAFFIC.speed[r.tier];
+      const T = TRAFFIC.divisors.reduce((a, b) => (Math.abs(b - ideal) < Math.abs(a - ideal) ? b : a));
+      const n = Math.min(Math.max(1, Math.round(r.len / 900)), TRAFFIC.budget - used);
+      for (let k = 0; k < n; k++) { dots.push({ pts: r.pts, T, off: k / n, radius: TRAFFIC.radius[r.tier] }); used++; }
+    }
+    return dots;
+  }
+  for (const p of ATLAS.panels) {
+    const canvas = document.createElement("canvas");
+    canvas.width = p.monitor.w; canvas.height = p.monitor.h;
+    canvas.style.cssText = "position:absolute;inset:0;pointer-events:none";
+    p.el.insertBefore(canvas, p.tint);
+    p.trafficCtx = canvas.getContext("2d");
+    p.trafficDots = {};
+    for (const slot of Object.values(p.slots)) p.trafficDots[slot.mapId] = buildDots(slot.svg);
+    p.night = 0;
+  }
+  let lastFrame = 0;
+  function drawTraffic(ts) {
+    requestAnimationFrame(drawTraffic);
+    if (ts - lastFrame < 32) return; // ~30fps
+    lastFrame = ts;
+    const t = (performance.now() / 1000) % CFG.loopSeconds;
+    for (const p of ATLAS.panels) {
+      const ctx = p.trafficCtx;
+      if (!ctx) continue;
+      ctx.clearRect(0, 0, p.monitor.w, p.monitor.h);
+      const mapId = p.slots.fixed ? p.slots.fixed.mapId : p.slots[ATLAS.mode].mapId;
+      const dots = p.trafficDots[mapId];
+      if (!dots || !dots.length) continue;
+      ctx.globalAlpha = 0.5 + 0.45 * p.night;
+      ctx.fillStyle = "#FFE9A8";
+      for (const d of dots) {
+        const phase = ((t / d.T) + d.off) % 1;
+        const fi = phase * (d.pts.length / 2 - 1);
+        const i = Math.floor(fi), f = fi - i;
+        const x = d.pts[2 * i] + (d.pts[2 * i + 2] - d.pts[2 * i]) * f;
+        const y = d.pts[2 * i + 1] + (d.pts[2 * i + 3] - d.pts[2 * i + 1]) * f;
+        ctx.beginPath(); ctx.arc(x, y, d.radius, 0, 6.2832); ctx.fill();
+      }
+    }
+  }
+  requestAnimationFrame(drawTraffic);
 
   // ---- Mode switching (active <-> idle) ----------------------------------
   let forced = qs.get("mode") || null; // "active" | "idle" | null (auto)
@@ -201,7 +233,9 @@
         for (const [v, [day, nite]] of Object.entries(DAY_NIGHT)) slot.svg.style.setProperty(v, lerpHex(day, nite, night));
         slot.svg.classList.toggle("night", night > 0.55);
       }
-      p.el.style.setProperty("--atlas-night", "0");
+      const ref = CFG.maps[(p.slots.fixed || p.slots.active).mapId];
+      p.night = forcedNight !== null ? forcedNight
+        : nightAmount(solarElevation(ref.center[0], ref.center[1], now));
     }
   }
   drift(); setInterval(drift, 60000);

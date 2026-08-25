@@ -18,20 +18,12 @@ html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
   stroke-linecap: round; stroke-linejoin: round; transition: stroke-opacity 30s linear;
 }
 svg.night .glowline path { stroke-opacity: .15; }
-.slot svg.night .car { opacity: .95; }
-.slot svg:not(.night) .car { opacity: .5; }
 
 /* Legacy tint element (unused by day/night now; kept as an anchor for overlay stacking). */
 .tint { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
 
 /* --- Ambient animation. Every period divides ATLAS_CONFIG.loopSeconds (60s).
-   Traffic dots ride the road geometry via CSS Motion Path — tiny composited
-   layers, smooth 60fps, near-zero paint. Durations/delays set per dot in JS. --- */
-.car {
-  fill: #FFE9A8; offset-rotate: 0deg; offset-distance: 0%;
-  animation: atlas-car 12s linear infinite;
-}
-@keyframes atlas-car { from { offset-distance: 0%; } to { offset-distance: 100%; } }
+   Traffic lights are drawn on one canvas per panel at 30fps (see atlas.js). --- */
 
 /* Shimmer animates opacity only — compositor-friendly as is. */
 .shimmer path { fill: #fff; stroke: none; }
@@ -40,7 +32,7 @@ svg.night .glowline path { stroke-opacity: .15; }
 .shimmer.line { animation-delay: -4s; }
 @keyframes atlas-shimmer { 0%, 100% { opacity: 0; } 50% { opacity: .14; } }
 
-@media (prefers-reduced-motion: reduce) { .car, .shimmer, .weather div::before, .weather div::after { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .shimmer, .weather div::before, .weather div::after { animation: none; } }
 
 /* --- Weather overlays. Compositor-only: each layer is an oversized pseudo-element
    holding a tiling SVG pattern, moved with a transform by an exact tile multiple,
