@@ -24,7 +24,7 @@ wallpaper process never restarts, so weather caches and animation phase survive 
   ones (~1 GB). Panels are absolutely positioned from your real monitor rects — detected by
   `tools/detect-monitors.ps1`, not hard-coded — including negative coordinates and portrait
   panels.
-- **Everything loops in 60 s.** Pulses (6 s / 4 s), shimmer (12 s), rain (1.5 s), snow (12 s),
+- **Everything loops in 60 s.** Pulses (6 s / 4 s), shimmer (12 s), rain (1 s), snow (20 s), dust (30 s),
   fog (30 s), storm flash (20 s) all divide one minute, so the identical page can later be
   captured to seamless video loops for machines that can't run live HTML (GNOME/Wayland tier —
   planned).
