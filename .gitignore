@@ -11,3 +11,5 @@ project-atlas-plan.md
 # work handoff (transferred offline, never committed)
 CLAUDE.work.md
 CLAUDE.md
+# delegated-work specs/tests (local only)
+.workers/
