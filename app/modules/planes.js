@@ -1,6 +1,5 @@
-/* Aircraft module (city maps only). adsb.lol bounding queries every 15s per city,
- * only while the city map is visible, dead-reckoned (in pixel space) between polls
- * and drawn into the shared 30fps canvas pass.
+/* Aircraft module. adsb.lol bounding queries every 10s per city,
+ * dead-reckoned between polls, drawn into the shared 30fps canvas pass.
  * KTM coverage is patchy — gaps are expected and handled (planes just age out).
  * No public ADS-B API sends CORS headers, so requests go through the local
  * atlas-helper daemon (tools/atlas-helper.mjs); without it, planes are absent. */

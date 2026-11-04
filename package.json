@@ -8,9 +8,11 @@
     "export": "node tools/export/export-map.mjs",
     "export:all": "node tools/export/export-map.mjs --all",
     "serve": "node tools/serve.mjs",
-    "detect": "powershell -ExecutionPolicy Bypass -File tools/detect-monitors.ps1",
+    "detect": "node tools/detect-monitors.mjs",
     "lively": "node tools/build-lively.mjs --set",
-    "build": "node tools/build-lively.mjs"
+    "build": "node tools/build-lively.mjs",
+    "gnome": "node tools/install-gnome.mjs",
+    "gnome:preview": "gjs -m gnome/host/atlas-host.js --preview"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^2.0.3",

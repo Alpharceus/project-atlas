@@ -13,6 +13,10 @@
   site.monitors = CFG.resolveMonitors(siteId);
   const only = qs.get("only"); // debug: render a single panel at origin
   if (only) site.monitors = site.monitors.filter((m) => [m.fixed, m.active, m.idle].includes(only));
+  // One view per monitor (GNOME host: Wayland windows can't span outputs). Same
+  // page, just one panel, placed at the view's origin by the min-x/y math below.
+  const panelId = qs.get("panel");
+  if (panelId) site.monitors = site.monitors.filter((m) => m.id === panelId);
 
   // ---- Layout: virtual desktop -> page coordinates -----------------------
   const minX = Math.min(...site.monitors.map((m) => m.x));
@@ -49,17 +53,28 @@
 
   // Ambient motion: traffic pulses on major/high roads, shimmer on water.
   function animate(svg) {
-    const clone = (sel, cls, before) => {
+    const copy = (sel, cls) => {
       const g = svg.querySelector(sel); if (!g) return null;
       const c = g.cloneNode(true);
       c.removeAttribute("id"); c.setAttribute("class", cls);
       c.querySelectorAll("path").forEach((p) => p.removeAttribute("class"));
-      if (before) g.before(c); else g.after(c);
       return c;
     };
-    clone("#layer-road-major", "glowline", true); // static night glow (no filters)
-    clone("#layer-water", "shimmer");
-    clone("#layer-waterway", "shimmer line");
+    const glow = copy("#layer-road-major", "glowline"); // static night glow (no filters)
+    if (glow) svg.querySelector("#layer-road-major").before(glow);
+    // Shimmer lives in its own <svg> over the map and animates that element's
+    // opacity: a composited layer, so no engine re-rasterizes the poster per step
+    // (WebKitGTK repaints the whole inline SVG for an opacity change on a <g>).
+    for (const [sel, cls] of [["#layer-water", "shimmer"], ["#layer-waterway", "shimmer line"]]) {
+      const g = copy(sel, "");
+      if (!g) continue;
+      const over = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      over.setAttribute("viewBox", svg.getAttribute("viewBox"));
+      over.setAttribute("preserveAspectRatio", svg.getAttribute("preserveAspectRatio") || "xMidYMid meet");
+      over.setAttribute("class", cls);
+      over.appendChild(g);
+      svg.after(over);
+    }
   }
 
   site.monitors.forEach((mon) => {
@@ -212,10 +227,13 @@
     out[1] = d.pts[2 * i + 1] + (d.pts[2 * i2 + 1] - d.pts[2 * i + 1]) * f;
   }
   let lastFrame = 0;
+  const frameMs = 1000 / (Number(qs.get("fps")) || site.fps || 30);
+  if (1000 / frameMs <= 15) root.classList.add("fps-15"); // weather overlays step to match (atlas.css)
   const P0 = [0, 0], P1 = [0, 0], P2 = [0, 0];
   function drawTraffic(ts) {
+    if (ATLAS.paused) { rafPending = false; return; }
     requestAnimationFrame(drawTraffic);
-    if (ts - lastFrame < 32) return; // ~30fps
+    if (ts - lastFrame < frameMs - 4) return; // site fps; 4 ms slack keeps 60 Hz vsync from dropping to half
     lastFrame = ts;
     const t = (performance.now() / 1000) % CFG.loopSeconds;
     for (const p of ATLAS.panels) {
@@ -253,7 +271,20 @@
       ctx.globalAlpha = 1;
     }
   }
+  let rafPending = true;
   requestAnimationFrame(drawTraffic);
+
+  // Hosts pause the page while nobody can see it (GNOME: monitor covered by a
+  // maximized/fullscreen window, or screen locked): no canvas frames, CSS
+  // animations frozen in place, so WebKit composites nothing.
+  ATLAS.paused = false;
+  ATLAS.setPaused = function (on) {
+    on = !!on;
+    if (on === ATLAS.paused) return;
+    ATLAS.paused = on;
+    root.classList.toggle("paused", on);
+    if (!on && !rafPending) { rafPending = true; requestAnimationFrame(drawTraffic); }
+  };
 
   // ---- Mode switching (active <-> idle) ----------------------------------
   let forced = qs.get("mode") || null; // "active" | "idle" | null (auto)
@@ -276,6 +307,9 @@
   ["mousemove", "mousedown", "keydown", "wheel", "touchstart"].forEach((ev) =>
     addEventListener(ev, () => { lastInput = Date.now(); if (!forced) applyMode("active"); }, { passive: true }));
   setInterval(tick, 1000);
+  // Hosts that own input (GNOME: the page sits under every window and never sees
+  // the pointer) report compositor idle time instead.
+  ATLAS.reportIdle = function (ms) { lastInput = Date.now() - ms; tick(); };
   root.dataset.mode = "active";
   if (forced) applyMode(forced);
 
@@ -342,6 +376,7 @@
     }
   }
   drift(); setInterval(drift, 60000);
+  setTimeout(() => root.classList.add("ready"), 2000); // initial night state applies instantly
 
   // lon/lat -> panel pixel coords for a given map (web mercator, same math as the exporter)
   ATLAS.project = function (mapId, lon, lat, mon) {

@@ -40,9 +40,13 @@ wallpaper process never restarts, so weather caches and animation phase survive 
 
 ```
 config/atlas.config.js     maps (center/zoom/theme), themes, sites (panel roles + modules), loop period
-tools/detect-monitors.ps1  writes config/monitors.local.js (generated, gitignored)
+tools/detect-monitors.mjs  writes config/monitors.local.js (generated, gitignored): Mutter D-Bus on GNOME, detect-monitors.ps1 on Windows
 tools/export/export-map.mjs  OpenFreeMap tiles -> maps/<id>.svg + maps/<id>.js (generated, gitignored)
 tools/build-lively.mjs     bundles app/+config/+maps into Lively's Library and sets it (span)
+tools/install-gnome.mjs    installs the GNOME Shell extension + planes helper user service
+gnome/host/atlas-host.js   GJS/GTK4/WebKitGTK host: one view per monitor (GNOME)
+gnome/extension/           Shell extension that paints the host's views onto the desktop background
+config/site.local.js       optional, gitignored: `globalThis.ATLAS_SITE = "work"` picks this machine's site
 app/                       the page: atlas.js (panels, animation, idle crossfade), modules/weather.js
 ```
 
@@ -66,6 +70,46 @@ Lively is closed (`npm run lively` handles the running session). The optional sc
 (`Lively.scr` in `C:\Windows`, registered via `HKCU\Control Panel\Desktop`) shows the same page;
 note it spawns a second page instance, so the in-page idle crossfade is the state-keeping
 mechanism and the screensaver is just a layer on top.
+
+## GNOME / Wayland (second site)
+
+The `work` site runs on a Fedora/GNOME 50 laptop (three 1080p panels). Wayland has no Lively and no way for a
+normal app to draw on the desktop, so it works differently but keeps the same page and every live layer:
+
+```
+echo 'globalThis.ATLAS_SITE = "work";' > config/site.local.js
+npm install && npm run export:all
+npm run gnome           # detect monitors, install extension + atlas-helper.service, enable
+                        # first install: log out and back in (Wayland loads new extensions at login)
+npm run gnome:preview   # the views as ordinary windows, for development
+```
+
+- **Host** (`gnome/host/atlas-host.js`): one borderless WebKitGTK view per monitor loading
+  `app/index.html?panel=<role>`, all in one web process. Wayland windows can't span outputs, hence per-panel pages.
+  Idle comes from Mutter's IdleMonitor (`ATLAS.reportIdle`), since the page never sees the pointer.
+- **Extension** (`gnome/extension/`): spawns the host with `--managed` (stdin control pipe; EOF → host exits), adopts its
+  windows (title `atlas-wallpaper|<connector>` + our child's pid), minimizes them and paints a `Clutter.Clone` of each
+  onto every `Meta.BackgroundActor` for that monitor: desktop, overview, workspace thumbnails, lock screen. The
+  windows answer `skip_taskbar` (overridden on every prototype GJS defines it on), so they never show in the overview,
+  Alt-Tab or the dash; a mapped clone is what keeps Mutter from suspending a minimized window.
+- **Pausing**: once a second the extension checks each monitor for a window covering its work area (maximized or
+  fullscreen) or a locked screen and sends `pause <connector> 0|1`; the page stops its canvas loop and freezes CSS
+  animations (`ATLAS.setPaused`). Measured in a headless GNOME 50 shell, three panels: ~33% of one core visible (with live
+  rain on one panel), **0.3% covered or locked**.
+- **Frame rate**: the `work` site runs at `fps: 15` (config), canvas and weather steps alike; Windows keeps 30.
+  Live on the laptop: ~36% → ~24% of one core (host + WebKit + GNOME Shell compositing), iGPU 22% → 15%,
+  and the NVIDIA GPU drops back to its idle P8 state.
+- **Lock screen (Super+L)**: the clones land on the lock-screen backgrounds too; the extension turns GNOME's 90 px blur
+  off for them and adds a light dim for the clock. GNOME normally fades a manual lock to black and reports the
+  screensaver active, which makes gnome-settings-daemon switch the monitors off at once (hardcoded, no setting); the
+  extension holds that off, so the maps stay up and live until 60 min without input, then GNOME's own fade and blank
+  run as usual and the pages pause (`LOCK_SHOW_MS`).
+- **Planes**: `atlas-helper.service` (systemd user unit) replaces the Startup-folder `.vbs`.
+
+WebKitGTK notes (what it costs to not be Chromium): an opacity animation on a `<g>` inside an inline SVG repaints the
+whole poster every step, so the water shimmer is now a separate overlay `<svg>` animated as its own composited layer
+(92% → 31% of a core); the 30 s dusk glow transition is skipped on first paint (it was 30 s of full repaints at startup).
+Every composited frame has a real fixed cost, so frames that nobody sees are the thing to avoid.
 
 ## Controls
 
@@ -106,11 +150,11 @@ Ryzen 7 9800X3D · RTX 5070 Ti · triple monitors: 1920×1080 landscape (Kathman
 
 ## Live layers
 
-- **Aircraft** (`app/modules/planes.js`, home only): adsb.lol point queries every 10 s per city,
+- **Aircraft** (`app/modules/planes.js`): adsb.lol point queries every 10 s per city,
   dead-reckoned between polls, drawn as small arrows in the shared canvas pass. No public
   ADS-B API sends CORS headers, so requests go through `tools/atlas-helper.mjs` — a local
   proxy on `127.0.0.1:8766` with an 8 s cache, autostarted from the Startup folder
-  (`atlas-helper.vbs`). Without it, planes are simply absent.
+  (`atlas-helper.vbs`) on Windows, `atlas-helper.service` on GNOME. Without it, planes are simply absent.
 - **ISS + terminator** (`app/modules/iss.js`): CelesTrak TLE cached in localStorage (max daily
   fetch), propagated locally with a vendored satellite.js v5 UMD — zero network per frame.
   The country maps (US/NM/Nepal) get a warm wash on the sunlit side of the terminator plus
@@ -118,8 +162,8 @@ Ryzen 7 9800X3D · RTX 5070 Ti · triple monitors: 1920×1080 landscape (Kathman
 
 ## Roadmap
 
-- Baked-video tier for GNOME/Wayland at a second site: headless capture of this same page,
-  NVENC-encoded seamless loops, swapped by a D-Bus idle watcher
+- Baked-video fallback for machines that can't afford live WebKit: headless capture of this same page into
+  seamless loops, shown by the same extension (the live GNOME tier made it unnecessary on the work laptop)
 
 ## Data & licenses
 

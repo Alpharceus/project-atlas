@@ -15,8 +15,11 @@ html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
    (.glowline, built in atlas.js) — no drop-shadow filter, zero per-frame cost. */
 .glowline path {
   fill: none; stroke: var(--road-major); stroke-width: 10; stroke-opacity: 0;
-  stroke-linecap: round; stroke-linejoin: round; transition: stroke-opacity 30s linear;
+  stroke-linecap: round; stroke-linejoin: round;
 }
+/* Dusk fades the glow in over 30s — but not on page load, where a city already
+   at night would otherwise repaint its whole poster every frame for 30s. */
+#atlas.ready .glowline path { transition: stroke-opacity 30s linear; }
 svg.night .glowline path { stroke-opacity: .15; }
 
 /* Legacy tint element (unused by day/night now; kept as an anchor for overlay stacking). */
@@ -25,7 +28,13 @@ svg.night .glowline path { stroke-opacity: .15; }
 /* --- Ambient animation. Every period divides ATLAS_CONFIG.loopSeconds (60s).
    Traffic lights are drawn on one canvas per panel at 30fps (see atlas.js). --- */
 
-/* Shimmer animates opacity only — compositor-friendly as is. */
+/* Paused by the host (nobody can see the panel): freeze every animation in place. */
+#atlas.paused .shimmer, #atlas.paused .weather > div, #atlas.paused .weather > div::before,
+#atlas.paused .weather > div::after { animation-play-state: paused !important; }
+
+/* Shimmer: a separate <svg> over the poster (atlas.js), animated by opacity only,
+   promoted to its own compositor layer so the poster itself never repaints. */
+.slot svg.shimmer { position: absolute; inset: 0; pointer-events: none; will-change: opacity; }
 .shimmer path { fill: #fff; stroke: none; }
 .shimmer.line path { fill: none; stroke: #fff; }
 .shimmer { animation: atlas-shimmer 12s steps(48) infinite; opacity: 0; }
@@ -90,6 +99,14 @@ svg.night .glowline path { stroke-opacity: .15; }
 }
 
 .wx-flash { background: rgba(255, 244, 200, .9); }
+
+/* Low-fps sites (config fps: 15): weather moves in ~15 steps/s instead of every vsync.
+   Tiles still advance by an exact multiple per period, so loops stay seamless. */
+#atlas.fps-15 .wx-rain::before { animation-timing-function: steps(15); }
+#atlas.fps-15 .wx-rain::after  { animation-timing-function: steps(11); }
+#atlas.fps-15 .wx-snow::before, #atlas.fps-15 .wx-dust::after { animation-timing-function: steps(300); }
+#atlas.fps-15 .wx-snow::after  { animation-timing-function: steps(225); }
+#atlas.fps-15 .wx-dust::before, #atlas.fps-15 .wx-fog::before { animation-timing-function: steps(450); }
 
 .wx-state-rain  .wx-rain,
 .wx-state-storm .wx-rain { opacity: calc(var(--wx, .6) * .9); }

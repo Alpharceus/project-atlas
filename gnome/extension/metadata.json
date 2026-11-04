@@ -1,0 +1,14 @@
+{
+  "uuid": "atlas@alpharceus.github.io",
+  "name": "Atlas",
+  "description": "Living black-and-gold map wallpaper: one WebKit view per monitor, painted onto the desktop background.",
+  "shell-version": [
+    "50",
+    "51"
+  ],
+  "url": "https://github.com/Alpharceus/project-atlas",
+  "session-modes": [
+    "user",
+    "unlock-dialog"
+  ]
+}

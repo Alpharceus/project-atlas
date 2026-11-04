@@ -33,6 +33,7 @@
   var sites = {
     home: {
       idleMinutes: 5,
+      fps: 30, // canvas + weather frame rate
       modules: { weather: true, planes: true, iss: true, terminator: true },
       monitors: [
         { id: "left",   x: -1920, y: 267,  w: 1920, h: 1080, active: "ktm", idle: "nepal" },
@@ -42,7 +43,8 @@
     },
     work: {
       idleMinutes: 5,
-      modules: { weather: true, planes: false, iss: true, terminator: true },
+      fps: 15, // laptop: every composited frame costs (WebKitGTK + clone into GNOME Shell)
+      modules: { weather: true, planes: true, iss: true, terminator: true },
       monitors: [
         { id: "left",   x: 0,    y: 0, w: 1920, h: 1080, active: "ktm", idle: "nepal" },
         { id: "center", x: 1920, y: 0, w: 1920, h: 1080, fixed: "us" },
@@ -64,5 +66,5 @@
     });
   }
 
-  g.ATLAS_CONFIG = { loopSeconds: LOOP_SECONDS, themes: themes, maps: maps, sites: sites, defaultSite: "home", resolveMonitors: resolveMonitors };
+  g.ATLAS_CONFIG = { loopSeconds: LOOP_SECONDS, themes: themes, maps: maps, sites: sites, defaultSite: g.ATLAS_SITE || "home", resolveMonitors: resolveMonitors };
 })(typeof window !== "undefined" ? window : globalThis);
