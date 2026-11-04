@@ -14,10 +14,14 @@ import Pbf from "pbf";
 import { VectorTile } from "@mapbox/vector-tile";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+try { await import(pathToFileURL(path.join(ROOT, "config/site.local.js")).href); } catch {}
 try { await import(pathToFileURL(path.join(ROOT, "config/monitors.local.js")).href); } catch {}
 await import(pathToFileURL(path.join(ROOT, "config/atlas.config.js")).href);
 const CONFIG = globalThis.ATLAS_CONFIG;
-const THEMES = { ...JSON.parse(await fs.readFile(path.join(ROOT, "tools/terraink/src/data/themes.json"), "utf8")).themes, ...CONFIG.themes };
+// Terraink's theme catalogue is optional (gitignored reference clone); atlas_gold lives in the config.
+let terrainkThemes = {};
+try { terrainkThemes = JSON.parse(await fs.readFile(path.join(ROOT, "tools/terraink/src/data/themes.json"), "utf8")).themes; } catch {}
+const THEMES = { ...terrainkThemes, ...CONFIG.themes };
 
 const TILE = 512, EXTENT = 4096, MAX_TILE_ZOOM = 14;
 const TILE_URL = "https://tiles.openfreemap.org/planet/20260816_080001_pt/{z}/{x}/{y}.pbf";

@@ -1,4 +1,4 @@
-/* Aircraft module (home only). adsb.lol bounding queries every 10s per city,
+/* Aircraft module. adsb.lol bounding queries every 10s per city,
  * dead-reckoned between polls, drawn into the shared 30fps canvas pass.
  * KTM coverage is patchy — gaps are expected and handled (planes just age out).
  * No public ADS-B API sends CORS headers, so requests go through the local
